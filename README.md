@@ -14,14 +14,14 @@
 
 1. Enter the source program d
 2. execute make
-3. execute insmod var2.ko
+3. execute insmod main.ko
 4. View device number: 
 	cat /proc/devices | grep 
 5. Create a device node in th
 according to the device numbe
     cd /dev
-    mknod var2 c 511 0
-    ls | grep var2  ===> var2
+    mknod var c 511 0
+    ls | grep var  ===> var
 
 ## Инструкция пользователя
 
