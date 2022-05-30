@@ -1,25 +1,33 @@
 #include <linux/module.h>
-#include <linux/fs.h>		
-#include <linux/errno.h>	
-#include <linux/types.h>	
-#include <linux/fcntl.h>	
+#include <linux/fs.h>
+#include <linux/errno.h>
+#include <linux/types.h>
+#include <linux/fcntl.h>
+#include <linux/spinlock.h>
 #include <linux/vmalloc.h>
 #include <linux/genhd.h>
 #include <linux/blkdev.h>
 #include <linux/bio.h>
 #include <linux/string.h>
+#include <linux/spinlock_types.h>
+#include <linux/blkdev.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/fs.h>
+#include <linux/genhd.h>
+#include <linux/init.h>
 
 
 #define MEMSIZE 0xF000 // Size of Ram disk in sectors
-int c = 0; //Variable for Major Number 
+int c = 0; //Variable for Major Number
 
 #define SECTOR_SIZE 512
 #define MBR_SIZE SECTOR_SIZE
 #define MBR_DISK_SIGNATURE_OFFSET 440
 #define MBR_DISK_SIGNATURE_SIZE 4
 #define PARTITION_TABLE_OFFSET 446
-#define PARTITION_ENTRY_SIZE 16 
-#define PARTITION_TABLE_SIZE 64 
+#define PARTITION_ENTRY_SIZE 16
+#define PARTITION_TABLE_SIZE 64
 #define MBR_SIGNATURE_OFFSET 510
 #define MBR_SIGNATURE_SIZE 2
 #define MBR_SIGNATURE 0xAA55
@@ -27,6 +35,9 @@ int c = 0; //Variable for Major Number
 #define BR_SIGNATURE_OFFSET 510
 #define BR_SIGNATURE_SIZE 2
 #define BR_SIGNATURE 0xAA55
+
+
+#define u8 unsigned char
 
 typedef struct
 {
@@ -90,8 +101,8 @@ static const PartTable def_log_part_table[] =
 		{
 			boot_type: 0x00,
 			start_head: 0x4,
-			start_sec: 0x2, 
-			start_cyl: 0x0, 
+			start_sec: 0x2,
+			start_cyl: 0x0,
 			part_type: 0x83,
 			end_head: 0x7,
 			end_sec: 0x20,
@@ -148,13 +159,13 @@ void copy_mbr_n_br(u8 *disk)
 	int i;
 
 	copy_mbr(disk);
-	for (i = 0; i < ARRAY_SIZE(def_log_part_table); i++)
+	for (i = 0; i < sizeof(def_log_part_table) / sizeof(PartTable); i++)
 	{
 		copy_br(disk, def_log_part_br_abs_start_sector[i], &def_log_part_table[i]);
 	}
 }
 /* Structure associated with Block device*/
-struct mydiskdrive_dev 
+struct mydiskdrive_dev
 {
 	int size;
 	u8 *data;
@@ -166,7 +177,7 @@ struct mydiskdrive_dev
 
 struct mydiskdrive_dev *x;
 
-static int my_open(struct block_device *x, fmode_t mode)	 
+static int my_open(struct block_device *x, fmode_t mode)
 {
 	int ret=0;
 	printk(KERN_INFO "mydiskdrive : open \n");
@@ -193,7 +204,7 @@ int mydisk_init(void)
 	/* Setup its partition table */
 	copy_mbr_n_br(device.data);
 
-	return MEMSIZE;	
+	return MEMSIZE;
 }
 
 static int rb_transfer(struct request *req)
@@ -226,20 +237,20 @@ static int rb_transfer(struct request *req)
 		Buffer: %p; Length: %u sectors\n",\
 		(unsigned long long)(start_sector), (unsigned long long) \
 		(sector_offset), buffer, sectors);
-		
+
 		if (dir == WRITE) /* Write to the device */
 		{
 			memcpy((device.data)+((start_sector+sector_offset)*SECTOR_SIZE)\
-			,buffer,sectors*SECTOR_SIZE);		
+			,buffer,sectors*SECTOR_SIZE);
 		}
 		else /* Read from the device */
 		{
 			memcpy(buffer,(device.data)+((start_sector+sector_offset)\
-			*SECTOR_SIZE),sectors*SECTOR_SIZE);	
+			*SECTOR_SIZE),sectors*SECTOR_SIZE);
 		}
 		sector_offset += sectors;
 	}
-	
+
 	if (sector_offset != sector_cnt)
 	{
 		printk(KERN_ERR "mydisk: bio info doesn't match with the request info");
@@ -248,17 +259,17 @@ static int rb_transfer(struct request *req)
 	return ret;
 }
 /** request handling function**/
-static void dev_request(struct request_queue *q)
-{
-	struct request *req;
-	int error;
-	while ((req = blk_fetch_request(q)) != NULL) /*check active request 
-						      *for data transfer*/
-	{
-	error=rb_transfer(req);// transfer the request for operation
-		__blk_end_request_all(req, error); // end the request
-	}
-}
+// static void dev_request(struct request_queue *q)
+// {
+// 	struct request *req;
+// 	int error;
+// 	while ((req = blk_fetch_request(q)) != NULL) /*check active request
+// 						      *for data transfer*/
+// 	{
+// 	    error=rb_transfer(req);// transfer the request for operation
+// 		__blk_end_request_all(req, error); // end the request
+// 	}
+// }
 
 void device_setup(void)
 {
@@ -266,10 +277,10 @@ void device_setup(void)
 	c = register_blkdev(c, "mydisk");// major no. allocation
 	printk(KERN_ALERT "Major Number is : %d",c);
 	spin_lock_init(&device.lock); // lock for queue
-	device.queue = blk_init_queue( dev_request, &device.lock); 
+	device.queue = blk_alloc_queue(GFP_KERNEL);
 
 	device.gd = alloc_disk(8); // gendisk allocation
-	
+
 	(device.gd)->major=c; // major no to gendisk
 	device.gd->first_minor=0; // first minor of gendisk
 
@@ -277,17 +288,17 @@ void device_setup(void)
 	device.gd->private_data = &device;
 	device.gd->queue = device.queue;
 	device.size= mydisk_init();
-	printk(KERN_INFO"THIS IS DEVICE SIZE %d",device.size);	
+	printk(KERN_INFO"THIS IS DEVICE SIZE %d",device.size);
 	sprintf(((device.gd)->disk_name), "mydisk");
-	set_capacity(device.gd, device.size);  
+	set_capacity(device.gd, device.size);
 	add_disk(device.gd);
 }
 
 static int __init mydiskdrive_init(void)
-{	
+{
 	int ret=0;
 	device_setup();
-	
+
 	return ret;
 }
 
@@ -297,12 +308,12 @@ void mydisk_cleanup(void)
 }
 
 void __exit mydiskdrive_exit(void)
-{	
+{
 	del_gendisk(device.gd);
 	put_disk(device.gd);
 	blk_cleanup_queue(device.queue);
 	unregister_blkdev(c, "mydisk");
-	mydisk_cleanup();	
+	mydisk_cleanup();
 }
 
 module_init(mydiskdrive_init);
@@ -310,3 +321,4 @@ module_exit(mydiskdrive_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Author");
 MODULE_DESCRIPTION("BLOCK DRIVER");
+
