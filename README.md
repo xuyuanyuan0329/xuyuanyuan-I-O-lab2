@@ -17,7 +17,7 @@
      sudo fdisk -l | grep /dev/
      lsblk
 2. Скорость передачи разделов диска при копировании файлов
-    sudo dd  if=/dev//zero of=/data//file_2
+    sudo dd  if=/dev/zero of=/data//file_2
 3. moddpprobe ext4
 4. lsmod | grep ext4
 5. sudo mmkfs.ext4 /dev/sdc
