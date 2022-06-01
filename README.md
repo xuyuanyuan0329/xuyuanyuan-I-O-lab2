@@ -12,16 +12,17 @@
 
 ## Инструкция по сборке
 
-1. Enter the source program d
-2. execute make
-3. execute insmod main.ko
-4. View device number: 
-	cat /proc/devices | grep 
-5. Create a device node in th
-according to the device numbe
-    cd /dev
-    mknod var c 511 0
-    ls | grep var  ===> var
+1. Просмотр разделов диска  
+     sudo fdisk -l
+     sudo fdisk -l | grep /dev/
+     lsblk
+2. Скорость передачи разделов диска при копировании файлов
+    sudo dd  if=/dev//zero of=/data//file_2
+3. moddpprobe ext4
+4. lsmod | grep ext4
+5. sudo mmkfs.ext4 /dev/sdc
+
+
 
 ## Инструкция пользователя
 
